@@ -50,6 +50,20 @@ create table if not exists characteristics (
   apts                   text,
   primary key (pin, year, card)
 );
+-- Added for similarity ranking (the Assessor's guidelines weigh basement and garage). Safe on existing databases.
+alter table characteristics add column if not exists bsmt      text;
+alter table characteristics add column if not exists bsmt_fin  text;
+alter table characteristics add column if not exists gar1_att  text;
+alter table characteristics add column if not exists gar1_size text;
+
+-- Assessor - Parcel Universe (nj4t-kc8j): coordinates, used for the "proximity" factor.
+create table if not exists parcels (
+  pin  text    not null,
+  year integer not null,
+  lat  double precision,
+  lon  double precision,
+  primary key (pin, year)
+);
 
 -- Board of Review Appeal Decision History (7pny-nedm). Appellant/attorney personal data is deliberately not stored.
 create table if not exists bor_appeals (

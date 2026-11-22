@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CompsError, findComps, ratioOf, type Property } from "@/lib/comps";
+import { CompsError, findComps, haversineKm, ratioOf, type Property } from "@/lib/comps";
 
 let n = 0;
 function prop(over: Partial<Property> = {}): Property {
@@ -17,10 +17,16 @@ function prop(over: Partial<Property> = {}): Property {
     isMultiCard: false,
     isMultiLand: false,
     prorationRate: 1,
+    lat: 41.9,
+    lon: -87.8,
+    bsmt: "Full",
+    bsmtFin: "Unfinished",
+    garAtt: "No",
+    garSize: "2 cars",
     ...over,
   };
 }
-const subject = () => prop({ pin: "99999999999999", bldgValue: 36000 }); // ratio 24
+const subject = () => prop({ pin: "99999999999999", bldgValue: 36000 }); // ratio 24, at 41.9,-87.8
 const withRatio = (ratio: number, over: Partial<Property> = {}) => prop({ bldgValue: ratio * 1500, ...over });
 
 describe("ratioOf", () => {
@@ -32,7 +38,7 @@ describe("ratioOf", () => {
 });
 
 describe("findComps", () => {
-  it("returns the lowest-ratio matches, lowest first", () => {
+  it("with equally similar candidates, returns the lowest ratios first", () => {
     const cands = [18, 19, 17, 16, 15, 14, 13, 20].map((r) => withRatio(r));
     const res = findComps(subject(), cands);
     expect(res.comps.map((c) => c.ratio)).toEqual([13, 14, 15, 16, 17, 18]);
@@ -142,5 +148,49 @@ describe("findComps", () => {
   it("warns when the subject itself is multi-card", () => {
     const res = findComps({ ...subject(), isMultiCard: true }, [withRatio(18)]);
     expect(res.warnings.join(" ")).toMatch(/multiple cards/);
+  });
+});
+
+describe("similarity ranking (the Assessor wants the closest comps, not the lowest)", () => {
+  it("prefers a more similar property over a lower-valued, less similar one", () => {
+    const similar = Array.from({ length: 6 }, (_, k) => withRatio(20 + k * 0.1)); // ratios 20.0-20.5, identical in every factor
+    const lowButDifferent = withRatio(12, { yearBuilt: 1969, bldgSf: 1650, bsmt: "Slab", garSize: "0 cars" }); // lowest ratio, but dissimilar
+    const res = findComps(subject(), [lowButDifferent, ...similar]);
+    expect(res.comps.map((c) => c.pin)).not.toContain(lowButDifferent.pin);
+    expect(res.comps).toHaveLength(6);
+  });
+
+  it("ranks nearer properties ahead of farther ones", () => {
+    const near = withRatio(20, { lat: 41.9005, lon: -87.8 });
+    const far = withRatio(15, { lat: 41.93, lon: -87.8 }); // ~3.3 km away, much lower ratio
+    const res = findComps(subject(), [far, near], { count: 1 });
+    expect(res.comps[0].pin).toBe(near.pin);
+    expect(res.comps[0].km).toBeLessThan(0.1);
+  });
+
+  it("penalises a different basement and garage", () => {
+    const match = withRatio(20);
+    const noMatch = withRatio(15, { bsmt: "Slab", garAtt: "Yes", garSize: "0 cars" });
+    expect(findComps(subject(), [noMatch, match], { count: 1 }).comps[0].pin).toBe(match.pin);
+  });
+
+  it("applies size limits as a percentage of the subject, not a fixed number", () => {
+    const big = { ...subject(), bldgSf: 3000, bldgValue: 72000, landSf: 8000 }; // ratio 24
+    const plus400 = withRatio(18, { bldgSf: 3400, bldgValue: 18 * 3400, landSf: 8000 }); // +13%: fine for a big house
+    expect(findComps(big, [plus400]).comps).toHaveLength(1);
+    const small = { ...subject(), bldgSf: 1000, bldgValue: 24000 };
+    const alsoPlus400 = withRatio(18, { bldgSf: 1400, bldgValue: 18 * 1400 }); // +40%: too different for a small one
+    expect(findComps(small, [alsoPlus400]).comps).toHaveLength(0);
+  });
+
+  it("still works, and says so, when coordinates are missing", () => {
+    const res = findComps({ ...subject(), lat: null, lon: null }, [withRatio(18)]);
+    expect(res.comps).toHaveLength(1);
+    expect(res.warnings.join(" ")).toMatch(/no map coordinates/);
+  });
+
+  it("measures great-circle distance", () => {
+    expect(haversineKm(41.9, -87.8, 41.9, -87.8)).toBe(0);
+    expect(haversineKm(41.9, -87.8, 41.91, -87.8)).toBeCloseTo(1.11, 1);
   });
 });

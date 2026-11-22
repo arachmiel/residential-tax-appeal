@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { findComps, type CompsResult, type Property } from "./comps";
+import { findComps, type CompsOptions, type CompsResult, type Property } from "./comps";
 
 export interface AddressHit {
   pin: string;
@@ -132,7 +132,7 @@ export async function getCalendarForTownship(townshipName: string): Promise<Cale
  * Comparable properties for a PIN. `basis` picks the value being compared:
  * "mailed" for the Assessor appeal, "certified" for the Board of Review.
  */
-export async function getComps(pin: string, basis: "mailed" | "certified"): Promise<{ result: CompsResult; valueYear: number } | null> {
+export async function getComps(pin: string, basis: "mailed" | "certified", options: Partial<CompsOptions> = {}): Promise<{ result: CompsResult; valueYear: number; subject: Property } | null> {
   const col = basis === "mailed" ? "mailed_bldg" : "certified_bldg";
   const { rows: subj } = await db().query(
     `select max(year) y from assessed_values where pin = $1 and ${col} > 0`, [pin],
@@ -142,13 +142,14 @@ export async function getComps(pin: string, basis: "mailed" | "certified"): Prom
 
   const { rows } = await db().query(
     `with s as (select township_code, nbhd, class from assessed_values where pin = $1 and year = $2)
-     select av.pin, pa.address, av.township_code, av.nbhd, av.class, c.ext_wall, c.year_built, c.bldg_sf, c.land_sf,
-            av.${col} as bldg_value, c.pin_is_multicard, c.pin_is_multiland, c.tieback_proration_rate
+     select av.pin, pa.address, av.township_code, av.nbhd, av.class, c.ext_wall, c.year_built, c.bldg_sf, c.land_sf, c.bsmt, c.bsmt_fin, c.gar1_att, c.gar1_size,
+            pc.lat, pc.lon, av.${col} as bldg_value, c.pin_is_multicard, c.pin_is_multiland, c.tieback_proration_rate
        from assessed_values av
        join s on s.township_code = av.township_code and s.nbhd = av.nbhd and s.class = av.class
        join characteristics c on c.pin = av.pin
                               and c.year = (select max(year) from characteristics where pin = av.pin)
                               and c.card = (select min(card) from characteristics x where x.pin = av.pin and x.year = c.year)
+       left join lateral (select lat, lon from parcels where pin = av.pin order by year desc limit 1) pc on true
        left join lateral (select address from parcel_addresses where pin = av.pin order by year desc limit 1) pa on true
       where av.year = $2 and av.${col} > 0`,
     [pin, year],
@@ -168,10 +169,16 @@ export async function getComps(pin: string, basis: "mailed" | "certified"): Prom
     isMultiCard: Boolean(r.pin_is_multicard),
     isMultiLand: Boolean(r.pin_is_multiland),
     prorationRate: num(r.tieback_proration_rate) ?? 1,
+    lat: num(r.lat),
+    lon: num(r.lon),
+    bsmt: (r.bsmt as string) ?? null,
+    bsmtFin: (r.bsmt_fin as string) ?? null,
+    garAtt: (r.gar1_att as string) ?? null,
+    garSize: (r.gar1_size as string) ?? null,
   });
 
   const all = rows.map(toProperty);
   const subject = all.find((p) => p.pin === pin);
   if (!subject) return null;
-  return { result: findComps(subject, all), valueYear: year };
+  return { result: findComps(subject, all, options), valueYear: year, subject };
 }

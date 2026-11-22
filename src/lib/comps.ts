@@ -1,18 +1,17 @@
 /**
  * Comparable-property selection for a uniformity appeal.
  *
- * Logic carried over from the original Residential Tax Appeal site:
- *   - ratio = building assessed value / building square feet
- *   - comparable = same township, neighborhood, class and exterior wall; single-card, single-land, fully prorated PINs
- *   - similar age / building size / land size
- *   - at least `minRatioGap` dollars/sq ft LOWER than the subject (smaller gaps are considered "uniform")
- *   - obviously anomalous ratios are excluded
- *   - the lowest ratios win; best `count` are returned
+ * The Cook County Assessor's 2026 appeal guidelines say comps should be chosen for what they have in common with the
+ * subject, NOT cherry-picked as the lowest-valued properties, and name seven factors: proximity, square footage, age,
+ * exterior construction, basement, land square footage and garage. So the selection works in two steps:
  *
- * Changes from the original:
- *   - the value basis is explicit: appeal 1 (Assessor) uses MAILED values, the Board of Review uses CERTIFIED values
- *   - age tolerance widens in steps (5 -> 10 -> 15 years) instead of one fixed window
- *   - the result says how it got there (warnings, tolerance used, rank) so the UI can explain it
+ *   1. ELIGIBILITY (hard rules): same township, neighborhood, class and exterior wall; single-card, single-parcel,
+ *      fully prorated PIN; building and land size within a percentage of the subject; age within a window; and
+ *      assessed at least `minRatioGap` $/sq ft BELOW the subject (smaller gaps are "uniform" and don't support an appeal).
+ *   2. RANKING: among eligible properties, the MOST SIMILAR win (a weighted distance over the factors above), not the lowest.
+ *
+ * ratio = building assessed value / building square feet. Appeal 1 (Assessor) compares MAILED values; the Board of
+ * Review compares CERTIFIED values; the caller picks the basis by passing the matching `bldgValue`.
  */
 
 export interface Property {
@@ -31,39 +30,70 @@ export interface Property {
   isMultiLand: boolean;
   /** 1 = the whole PIN is this parcel. Below 1 means value is split across PINs. */
   prorationRate: number;
+  lat?: number | null;
+  lon?: number | null;
+  /** Basement type, e.g. "Full", "Partial", "Slab", "Crawl". */
+  bsmt?: string | null;
+  /** Basement finish, e.g. "Formal Rec Room", "Unfinished". */
+  bsmtFin?: string | null;
+  /** Garage attached? ("Yes"/"No") and size ("2 cars"). */
+  garAtt?: string | null;
+  garSize?: string | null;
+}
+
+export interface SimilarityWeights {
+  proximity: number;
+  size: number;
+  age: number;
+  land: number;
+  basement: number;
+  garage: number;
 }
 
 export interface CompsOptions {
   count: number;
-  /** Age windows to try in order, in years. Stops at the first that yields `count` comps. */
+  /** Age windows (years) to try in order; stops at the first that yields `count` comps. */
   ageSteps: number[];
-  /** Inherited from the old site's SQL; unvalidated, so tune against real outcomes. */
-  bldgSfTolerance: number;
-  landSfTolerance: number;
-  /** Comp ratio must be at least this many $/sf below the subject. */
+  /** Max building-size difference as a fraction of the subject's (0.2 = ±20%). */
+  bldgSfPct: number;
+  /** Max land-size difference as a fraction of the subject's. */
+  landSfPct: number;
+  /** Comp ratio must be at least this many $/sq ft below the subject. */
   minRatioGap: number;
   /** Ratios below this fraction of the group median are treated as data errors. */
   outlierFloor: number;
+  /** Distance (km) that counts as "one unit" of dissimilarity. ~0.8 km = half a mile. */
+  proximityScaleKm: number;
+  /** Age difference (years) that counts as one unit. */
+  ageScaleYears: number;
+  weights: SimilarityWeights;
 }
 
 export const DEFAULT_OPTIONS: CompsOptions = {
   count: 6,
   ageSteps: [5, 10, 15],
-  bldgSfTolerance: 294,
-  landSfTolerance: 1242,
+  bldgSfPct: 0.2,
+  landSfPct: 0.3,
   minRatioGap: 1,
   outlierFloor: 0.5,
+  proximityScaleKm: 0.8,
+  ageScaleYears: 10,
+  weights: { proximity: 1, size: 1, age: 1, land: 1, basement: 1, garage: 1 },
 };
 
 export interface Comp extends Property {
   ratio: number;
+  /** Weighted dissimilarity to the subject. 0 = identical on every factor; lower is more similar. */
+  distance: number;
+  /** Straight-line distance to the subject in km, when both have coordinates. */
+  km: number | null;
 }
 
 export interface CompsResult {
   subjectRatio: number;
   /** Matching properties (same twp/nbhd/class/wall, eligible, outliers removed). */
   groupSize: number;
-  /** How many of the group have a LOWER ratio than the subject, i.e. pay less per sq ft. */
+  /** How many of the group have a LOWER ratio than the subject, i.e. are assessed lower per sq ft. */
   paysMoreThan: number;
   medianRatio: number | null;
   comps: Comp[];
@@ -90,8 +120,41 @@ function eligible(p: Property): boolean {
   return !p.isMultiCard && !p.isMultiLand && p.prorationRate === 1;
 }
 
+/** Great-circle distance in km. */
+export function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(bLat - aLat);
+  const dLon = rad(bLon - aLon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+const same = (a?: string | null, b?: string | null) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+/** Weighted dissimilarity of `c` to `s`. A factor with missing data on either side contributes nothing. */
+export function dissimilarity(s: Property, c: Property, opt: CompsOptions): { distance: number; km: number | null } {
+  const w = opt.weights;
+  let d = 0;
+
+  let km: number | null = null;
+  if (s.lat != null && s.lon != null && c.lat != null && c.lon != null) {
+    km = haversineKm(s.lat, s.lon, c.lat, c.lon);
+    d += w.proximity * (km / opt.proximityScaleKm);
+  }
+  if (s.bldgSf && c.bldgSf) d += (w.size * Math.abs(c.bldgSf - s.bldgSf)) / s.bldgSf / opt.bldgSfPct;
+  if (s.yearBuilt != null && c.yearBuilt != null) d += (w.age * Math.abs(c.yearBuilt - s.yearBuilt)) / opt.ageScaleYears;
+  if (s.landSf && c.landSf) d += (w.land * Math.abs(c.landSf - s.landSf)) / s.landSf / opt.landSfPct;
+  if (s.bsmt != null && c.bsmt != null) {
+    d += w.basement * (!same(s.bsmt, c.bsmt) ? 1 : !same(s.bsmtFin, c.bsmtFin) ? 0.5 : 0);
+  }
+  if (s.garSize != null && c.garSize != null) {
+    d += w.garage * ((same(s.garAtt, c.garAtt) ? 0 : 0.5) + (same(s.garSize, c.garSize) ? 0 : 0.5));
+  }
+  return { distance: d, km };
+}
+
 export function findComps(subject: Property, candidates: Property[], overrides: Partial<CompsOptions> = {}): CompsResult {
-  const opt = { ...DEFAULT_OPTIONS, ...overrides };
+  const opt: CompsOptions = { ...DEFAULT_OPTIONS, ...overrides, weights: { ...DEFAULT_OPTIONS.weights, ...overrides.weights } };
   const warnings: string[] = [];
 
   const subjectRatio = ratioOf(subject);
@@ -113,7 +176,8 @@ export function findComps(subject: Property, candidates: Property[], overrides: 
     if (!eligible(c)) continue;
     const ratio = ratioOf(c);
     if (ratio === null) continue;
-    pool.push({ ...c, ratio });
+    const { distance, km } = dissimilarity(subject, c, opt);
+    pool.push({ ...c, ratio, distance, km });
   }
 
   // 2. Drop data-error outliers (e.g. $4/sf when the group sits around $15-20/sf).
@@ -123,30 +187,33 @@ export function findComps(subject: Property, candidates: Property[], overrides: 
 
   if (group.length === 0) warnings.push("No other properties in this neighborhood match the same class and exterior.");
 
-  // 3. Find the narrowest age window that yields enough comps.
+  // 3. Eligibility: lower ratio, and similar size and land (as a percentage of the subject's).
   const base = group.filter(
     (c) =>
       c.ratio <= subjectRatio - opt.minRatioGap &&
       subject.bldgSf !== null &&
       c.bldgSf !== null &&
-      Math.abs(c.bldgSf - subject.bldgSf) <= opt.bldgSfTolerance &&
-      (subject.landSf === null || c.landSf === null || Math.abs(c.landSf - subject.landSf) <= opt.landSfTolerance),
+      Math.abs(c.bldgSf - subject.bldgSf) <= opt.bldgSfPct * subject.bldgSf &&
+      (subject.landSf === null || c.landSf === null || Math.abs(c.landSf - subject.landSf) <= opt.landSfPct * subject.landSf),
   );
 
+  // 4. Narrowest age window that yields enough comps; within it, the MOST SIMILAR win.
+  const mostSimilar = (xs: Comp[]) => [...xs].sort((a, b) => a.distance - b.distance || a.ratio - b.ratio).slice(0, opt.count);
   let chosen: Comp[] = [];
   let ageUsed: number | null = null;
 
   if (subject.yearBuilt === null) {
     warnings.push("Year built is missing for this property, so age was not considered.");
-    chosen = [...base].sort((a, b) => a.ratio - b.ratio).slice(0, opt.count);
+    chosen = mostSimilar(base);
   } else {
     for (const tol of opt.ageSteps) {
-      const within = base.filter((c) => c.yearBuilt !== null && Math.abs(c.yearBuilt - subject.yearBuilt!) <= tol);
-      chosen = within.sort((a, b) => a.ratio - b.ratio).slice(0, opt.count);
+      chosen = mostSimilar(base.filter((c) => c.yearBuilt !== null && Math.abs(c.yearBuilt - subject.yearBuilt!) <= tol));
       ageUsed = tol;
       if (chosen.length >= opt.count) break;
     }
   }
+
+  if (subject.lat == null || subject.lon == null) warnings.push("This property has no map coordinates, so proximity was not considered.");
 
   const meetsTarget = chosen.length >= opt.count;
   if (!meetsTarget) {

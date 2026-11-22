@@ -41,10 +41,24 @@ Full-county size (residential classes, default year ranges): assessed values ≈
 | Appeal calendar | https://www.cookcountyassessoril.gov/assessment-calendar-and-deadlines (HTML, parsed) |
 
 ## How comps work
-`ratio = building assessed value ÷ building sq ft`. A comparable is in the same township, neighborhood, class and exterior wall, is a single-card/single-parcel PIN, is similar in age, building size and land size, and is at least $1/sq ft lower than the subject. The lowest ratios win. Appeal 1 (Assessor) compares **mailed** values; the Board of Review compares **certified** values.
+`ratio = building assessed value ÷ building sq ft`. The Assessor's 2026 appeal guidelines say comps should be chosen for what they share with the subject (proximity, size, age, exterior, basement, land, garage) and **not** cherry-picked as the lowest-valued properties. So selection has two steps (`src/lib/comps.ts`):
+
+1. **Eligibility.** Same township, neighborhood, class and exterior wall; single-card, single-parcel PIN; building size within ±20% and land within ±30% of the subject; age within ±5/10/15 years (narrowest that works); and at least $1/sq ft **lower** than the subject.
+2. **Ranking.** Among the eligible, the **most similar** win (weighted distance over the seven factors), not the lowest ratio.
+
+Appeal 1 (Assessor) compares **mailed** values; the Board of Review compares **certified** values.
+
+### Tuning results (River Forest, 80 real homes)
+| | Full set of 6 comps | Partial | None |
+|---|---|---|---|
+| Original rules (absolute ±294 sq ft / ±1,242 sq ft) | 25 | 33 | 22 |
+| Percentage tolerances (current) | 42 | 24 | 14 |
+
+The building- and land-size limits were the binding constraint (age and the $1 gap barely mattered). Choosing the most similar instead of the lowest gave comps that are closer (median 0.21 mi vs 0.26 mi) and more similar, at the cost of a smaller ratio gap (median $3.02/sf vs $4.22/sf below the subject), i.e. a more defensible but less aggressive argument. Re-run on more townships before trusting the exact numbers.
 
 ## Open questions
-- **Tolerances are unvalidated.** The size and land windows (±294 sq ft, ±1,242 sq ft) and the age steps were inherited from the old site's SQL. On a sample of real River Forest homes, few got a full set of 6 comps (details in the PR/commit notes). Tune them against real appeal outcomes before relying on them.
+- **Tolerances and weights are tuned for coverage and similarity, not outcomes.** There is no dataset of which comps were submitted, so we can't measure which settings win appeals. Tested on one township only. Track results as customers appeal.
+- **About 1 in 6 homes get no comps**, typically because similar properties aren't assessed lower (already uniform) or the property is atypical. The page says so instead of forcing weak comps.
 - **Legal.** Filing on someone's behalf may be unauthorized practice of law in Illinois, and automating the county's portal may breach its terms. Get legal advice before building anything beyond assisted filing.
 - **Product.** Which parts are free vs. paid, and accounts/payments, are not designed yet.
 - **Not built yet:** address autocomplete, email alerts, assisted-filing checklist and PDF generation, auth, deployment.

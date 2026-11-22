@@ -156,12 +156,12 @@ export default async function PropertyPage({ params }: Params) {
           {comps.result.comps.length > 0 && (
             <div className="table-wrap" style={{ marginTop: 12 }}>
               <table>
-                <thead><tr><th>#</th><th>Address</th><th>PIN</th><th className="n">$/sq ft</th><th className="n">Built</th><th className="n">Sq ft</th></tr></thead>
+                <thead><tr><th>#</th><th>Address</th><th>PIN</th><th className="n">$/sq ft</th><th className="n">Miles away</th><th className="n">Built</th><th className="n">Sq ft</th></tr></thead>
                 <tbody>
                   {comps.result.comps.map((c, i) => (
                     <tr key={c.pin}>
                       <td>{i + 1}</td><td>{c.address ?? "—"}</td><td>{formatPin(c.pin)}</td>
-                      <td className="n">{perSf(c.ratio)}</td><td className="n">{c.yearBuilt ?? "—"}</td><td className="n">{num(c.bldgSf)}</td>
+                      <td className="n">{perSf(c.ratio)}</td><td className="n">{c.km === null ? "—" : (c.km * 0.621371).toFixed(2)}</td><td className="n">{c.yearBuilt ?? "—"}</td><td className="n">{num(c.bldgSf)}</td>
                     </tr>
                   ))}
                 </tbody>

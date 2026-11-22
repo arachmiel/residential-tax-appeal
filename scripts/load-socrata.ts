@@ -73,13 +73,21 @@ const DATASETS: Dataset[] = [
     where: (y) => `year>=${y} AND class in ${inList}${townshipClause("township_code")}`,
     columns: { pin: "text", year: "int", card: "int", class: "text", township_code: "text", pin_is_multicard: "boolean", pin_is_multiland: "boolean",
       tieback_proration_rate: "numeric", card_proration_rate: "numeric", year_built: "int", bldg_sf: "int", land_sf: "int",
-      ext_wall: "text", type_resd: "text", use: "text", apts: "text" },
+      ext_wall: "text", type_resd: "text", use: "text", apts: "text", bsmt: "text", bsmt_fin: "text", gar1_att: "text", gar1_size: "text" },
     map: (r) => ({ pin: s(r.pin), year: i(r.year), card: i(r.card) ?? 1, class: s(r.class), township_code: s(r.township_code),
       pin_is_multicard: r.pin_is_multicard === true || r.pin_is_multicard === "true", pin_is_multiland: r.pin_is_multiland === true || r.pin_is_multiland === "true",
       tieback_proration_rate: n(r.tieback_proration_rate), card_proration_rate: n(r.card_proration_rate),
       year_built: i(r.char_yrblt), bldg_sf: i(r.char_bldg_sf), land_sf: i(r.char_land_sf),
-      ext_wall: s(r.char_ext_wall), type_resd: s(r.char_type_resd), use: s(r.char_use), apts: s(r.char_apts) }),
+      ext_wall: s(r.char_ext_wall), type_resd: s(r.char_type_resd), use: s(r.char_use), apts: s(r.char_apts),
+      bsmt: s(r.char_bsmt), bsmt_fin: s(r.char_bsmt_fin), gar1_att: s(r.char_gar1_att), gar1_size: s(r.char_gar1_size) }),
     conflict: "pin, year, card",
+  },
+  {
+    name: "parcels", id: "nj4t-kc8j", table: "parcels", yearField: "year", defaultFrom: thisYear - 1,
+    where: (y) => `year>=${y} AND class in ${inList}${townshipClause("township_code")}`,
+    columns: { pin: "text", year: "int", lat: "numeric", lon: "numeric" },
+    map: (r) => ({ pin: s(r.pin), year: i(r.year), lat: n(r.lat), lon: n(r.lon) }),
+    conflict: "pin, year",
   },
   {
     name: "bor_appeals", id: "7pny-nedm", table: "bor_appeals", yearField: "tax_year", defaultFrom: thisYear - 6,
@@ -95,6 +103,7 @@ const DATASETS: Dataset[] = [
 
 const SOCRATA_FIELDS: Record<string, string[] | undefined> = {
   // Never request personal data we don't use (appellant names, owner/mailing addresses).
+  "nj4t-kc8j": ["pin", "year", "lat", "lon", "class", "township_code"],
   "3723-97qp": ["pin", "year", "prop_address_full", "prop_address_city_name", "prop_address_state", "prop_address_zipcode_1"],
   "7pny-nedm": ["pin", "township_code", "tax_year", "appealseq", "appealtype", "appealtypedescription", "assessor_totalvalue",
     "bor_totalvalue", "result", "changereason", "nochangereasondescription", "majorclass"],
@@ -161,7 +170,7 @@ async function main() {
       try {
         await client.query("begin");
         const code = township?.replace(/'/g, "");
-        const scope = !code ? "" : d.name === "parcel_addresses"
+        const scope = !code ? "" : d.name === "parcel_addresses" || d.name === "parcels"
           ? ` and pin in (select pin from assessed_values where township_code = '${code}')`
           : ` and township_code = '${code}'`;
         await client.query(`delete from ${d.table} where ${d.yearField} >= $1${scope}`, [from]);

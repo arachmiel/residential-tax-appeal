@@ -61,6 +61,12 @@ export function StepList({ steps, storageKey }: { steps: Step[]; storageKey: str
                   <a className="btn link" href={s.link.href} target="_blank" rel="noopener noreferrer">{s.link.label} ↗</a>
                 </p>
               )}
+              {s.download && (
+                <p>
+                  <a className="btn primary" href={s.download.href} download={s.download.filename}>{s.download.label}</a>
+                  <span className="meta"> saved as “{s.download.filename}”</span>
+                </p>
+              )}
               {s.copy && s.copy.length > 0 && (
                 <ul className="copy-list">
                   {s.copy.map((c) => (

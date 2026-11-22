@@ -1,6 +1,7 @@
 import { appealStage, type AppealStage, type CalendarEntry } from "./calendar";
 import type { CompsResult, Property } from "./comps";
 import { money, niceDate, perSf } from "./format";
+import { compsFileName, MAX_ATTACHED_COMPS } from "./compsFile";
 import { formatPin } from "./pin";
 
 /**
@@ -22,6 +23,8 @@ export interface Step {
   body: string[];
   copy?: CopyField[];
   link?: { href: string; label: string };
+  /** A file we generate for the homeowner to download and attach. */
+  download?: { href: string; label: string; filename: string };
 }
 
 export type Track = "assessor" | "bor" | "not_open";
@@ -194,21 +197,49 @@ export function buildFilingPlan({ entry, property, comps, today }: PlanInput): F
     track === "assessor"
       ? [
           { id: "ready", title: "Get ready", body: [
-              `Your township is open for Assessor appeals until ${niceDate(deadline)} (${describeDaysLeft(daysLeft)}). Only one application per property.`,
-              "You need an email address: the county uses it to create your account and to send your Filing ID and docket number.",
+              `Your township is open for Assessor appeals until ${niceDate(deadline)} (${describeDaysLeft(daysLeft)}). Only one application per property. Filing is free and you don't need an attorney.`,
+              "You need an email address for your account. You can save a draft and come back, but once you submit you cannot change the filing or add documents, so submit when everything is ready.",
+              "These steps follow the Assessor's 2024 filing walkthrough and its current website. Screens can change slightly (for example the year in a filing's name), so if something differs, follow what the system says.",
             ] },
-          { id: "open", title: "Open the Assessor's online filing and choose Residential", body: [
-              "Residential covers single-family homes, townhomes and buildings with no more than six units. You can save a draft and come back before submitting.",
-              "Click Begin Filing on the county's filing system. Starting before your township is open may result in a deleted file.",
-            ], link: { href: LINKS.assessorFileDirect(entry.year), label: "Begin the residential filing (county filing system)" } },
-          { id: "pin", title: "Enter your PIN", body: ["Use whichever format the form accepts."],
+          { id: "account", title: "Log in or create your account", body: [
+              "On the Assessor's site choose Appeal, then File Online, then Residential. Log in with your email and password.",
+              "First time: click New User / Create Account, enter your details, then activate the account from the email the county sends you.",
+            ], link: { href: LINKS.assessorFile, label: "Open the Assessor's online appeal page" } },
+          { id: "start", title: "Start the residential appeal", body: [
+              "From your available filings, choose the Residential assessment appeal for the current year, then click Begin Filing.",
+              "Search for your property by PIN OR by address: enter one, not both (entering both can cause an error). If a previous owner's name shows up, that's fine: you can change it later. Click Start Filing, tick both agreement boxes, then Next.",
+            ], link: { href: LINKS.assessorFileDirect(entry.year), label: "Begin the residential filing (county filing system)" },
             copy: [{ label: "Your PIN (with dashes)", value: pinDashed }, { label: "Your PIN (digits only)", value: property.pin }] },
-          compsStep,
-          ...(statement ? [{ id: "explain", title: "Optional: add your explanation", body: ["If the application has a place for an explanation, you can paste or adapt the draft below. It is yours to edit; check every number."] } satisfies Step] : []),
-          { id: "submit", title: `Review and submit by ${niceDate(deadline)}`, body: [
-              "Submit once. You'll get an email confirming your submission and a second email with your docket number. Keep both.",
-              "The Assessor mails the result.",
-              `The Assessor's own page and guidelines have the latest instructions: ${LINKS.assessorFile}`,
+          { id: "pages", title: "Confirm the property, then skip what doesn't apply", body: [
+              "Check the PIN and address and click Next.",
+              "Certificate of Error page: only if the Assessor made a factual error in earlier years (for example the wrong square footage). Otherwise click Next.",
+              "Additional PINs page: only for extra PINs that are part of your property, such as an adjacent lot with its own PIN. Do not enter comparable properties here.",
+            ] },
+          { id: "filer", title: "Say who is filing", body: [
+              "For both \"who is filing\" dropdowns, choose Taxpayer Owner. If your name appears in the list, select it. If not, tick the box to add your own name, address, phone and email.",
+            ] },
+          { id: "characteristics", title: "Check your property's characteristics", body: [
+              `Review every characteristic carefully (age, stories, type, exterior, fireplaces, heating, air conditioning, bathrooms, basement, attic, garage). Our county data shows${property.yearBuilt ? ` built ${property.yearBuilt}` : ""}${property.bldgSf ? `, ${property.bldgSf.toLocaleString("en-US")} sq ft of building` : ""}; correct anything that is wrong. Errors here can affect your value.`,
+            ] },
+          { id: "grounds", title: "Choose your reasons for appealing", body: [
+              "You can pick more than one: lack of uniformity, overvaluation, or incorrect property description (other reasons include fire damage or a building that no longer exists). Only pick reasons you can support.",
+              "\"What you think the property is worth\": enter a figure if you have a basis for one, or leave it at 0. Then say how the property is used (single-family or multi-family).",
+            ] },
+          supportsAppeal && list.length > 0
+            ? { id: "comps", title: `Comparable properties: attach up to ${MAX_ATTACHED_COMPS} (optional)`, body: [
+                "Attaching comps is optional: the Assessor's analysts run their own comparables analysis. If you want to add yours, these are the most similar properties in your neighborhood that are assessed lower, chosen the way the Assessor describes (neighborhood, class, age, building and land size).",
+                "Two ways to add them: search inside the application (it can be slow), or attach a file. The county requires exact file names: one Excel file named \"" + compsFileName(property.pin) + "\" (we made it for you), or one PDF per comp named \"Comparable PIN xx-xx-xxx-xxx-xxxx.pdf\". Attach it in the Attachments section called \"Comparable PINs Data\".",
+              ], copy: list.map((c, i) => ({ label: `Comp ${i + 1}: ${c.address ?? "address unavailable"}`, value: formatPin(c.pin) })),
+              download: { href: `/property/${property.pin}/file/comps`, label: "Download the comps Excel file", filename: compsFileName(property.pin) } }
+            : compsStep,
+          { id: "documents", title: "Add your narrative and evidence", body: [
+              "Add a narrative: the Assessor advises everyone to include one, in your own words, explaining why your value is too high. Add photos and any appraisal. You can upload roughly 10 items per section; very large files may be rejected (an older county FAQ gave 5 MB per file, 25 MB for appraisals).",
+              ...(statement ? ["You can paste or adapt the draft explanation at the bottom of this page. It is yours to edit; check every number."] : []),
+            ] },
+          { id: "submit", title: `Submit by ${niceDate(deadline)}`, body: [
+              "Enter your name and phone, then click Submit. When asked \"Are you sure?\", pause: click No and check that everything is filled in and uploaded. Then submit and click Yes.",
+              "You will get a Filing ID. That is not your docket number: a second email contains the docket number. Keep both.",
+              "Results come by mail (the Assessor said about 30 to 60 days after your township closes), not by email or on the website. If you win, the lower value shows up in the following year's second-installment tax bill.",
             ], link: { href: LINKS.assessorGuidelines, label: "Read the Assessor's 2026 appeal guidelines" } },
         ]
       : [

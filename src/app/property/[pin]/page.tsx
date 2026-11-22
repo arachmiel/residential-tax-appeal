@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { appealStage, type AppealStage, type CalendarEntry } from "@/lib/calendar";
 import { formatPin, normalizePin } from "@/lib/pin";
-import { getBorAppeals, getCalendarForTownship, getComps, getProperty, getValueHistory, type CalendarRow } from "@/lib/queries";
+import { getBorAppeals, getCalendarForTownship, getComps, getProperty, getValueHistory, toCalendarEntry } from "@/lib/queries";
 import { isAboveMedian } from "@/lib/filing";
 import { money, niceDate, num, perSf, todayIso } from "@/lib/format";
 
@@ -14,14 +14,6 @@ type Params = { params: Promise<{ pin: string }> };
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const pin = normalizePin((await params).pin);
   return { title: pin ? `PIN ${formatPin(pin)}` : "Property" };
-}
-
-function toEntry(r: CalendarRow): CalendarEntry {
-  return {
-    year: r.year, region: r.region, township: r.township, noticeDate: r.notice_date, lastFileDate: r.last_file_date,
-    aRollCertified: r.a_roll_certified, aRollPublished: r.a_roll_published, borStart: r.bor_start, borEnd: r.bor_end,
-    pass: r.pass, statusText: r.status_text ?? "", borEvidenceDeadline: r.bor_evidence_deadline,
-  };
 }
 
 function StageBanner({ stage, e }: { stage: AppealStage; e: CalendarEntry }) {
@@ -86,7 +78,7 @@ export default async function PropertyPage({ params }: Params) {
     prop.townshipName ? getCalendarForTownship(prop.townshipName) : Promise.resolve(null),
   ]);
 
-  const entry = calRow ? toEntry(calRow) : null;
+  const entry = calRow ? toCalendarEntry(calRow) : null;
   const stage = entry ? appealStage(entry, todayIso()) : null;
   // Assessor appeals compare MAILED values; once the roll is certified the Board of Review compares CERTIFIED values.
   const basis = stage === "bor_open" || (stage === "closed" && entry?.aRollCertified) ? "certified" : "mailed";

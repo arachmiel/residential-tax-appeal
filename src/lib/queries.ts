@@ -1,3 +1,4 @@
+import type { CalendarEntry } from "./calendar";
 import { db } from "./db";
 import { findComps, type CompsOptions, type CompsResult, type Property } from "./comps";
 
@@ -115,6 +116,15 @@ export interface CalendarRow {
   notice_date: string | null; last_file_date: string | null; a_roll_certified: string | null; a_roll_published: string | null;
   bor_start: string | null; bor_end: string | null; pass: number | null; status_text: string | null;
   bor_evidence_deadline: string | null;
+}
+
+/** Convert a database row into the calendar entry the stage and filing logic use. */
+export function toCalendarEntry(r: CalendarRow): CalendarEntry {
+  return {
+    year: r.year, region: r.region, township: r.township, noticeDate: r.notice_date, lastFileDate: r.last_file_date,
+    aRollCertified: r.a_roll_certified, aRollPublished: r.a_roll_published, borStart: r.bor_start, borEnd: r.bor_end,
+    pass: r.pass, statusText: r.status_text ?? "", borEvidenceDeadline: r.bor_evidence_deadline,
+  };
 }
 
 /**

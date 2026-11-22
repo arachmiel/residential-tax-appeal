@@ -61,29 +61,68 @@ describe("when the window is not open", () => {
 
 describe("Assessor track", () => {
   const p = buildFilingPlan(input(entry({}), "2026-11-22"));
+  const step = (id: string) => p.steps.find((x) => x.id === id)!;
   it("is chosen when the Assessor window is open, with the deadline and days left", () => {
     expect(p.track).toBe("assessor");
     expect(p.deadline).toBe("2026-11-23");
     expect(p.daysLeft).toBe(1);
     expect(p.warnings.join(" ")).toMatch(/1 day left/);
   });
-  it("walks through the county's steps and links to the official filing page", () => {
-    expect(p.steps.map((s) => s.id)).toEqual(["ready", "open", "pin", "comps", "explain", "submit"]);
-    expect(p.steps.find((s) => s.id === "open")!.link!.href).toBe(LINKS.assessorFileDirect(2026));
-    expect(p.steps.find((s) => s.id === "open")!.link!.href).toMatch(/propertytaxfilings\.cookcountyil\.gov.*CCAO_APPEAL_RES_2026$/);
+  it("follows the county's screens in order", () => {
+    expect(p.steps.map((x) => x.id)).toEqual(["ready", "account", "start", "pages", "filer", "characteristics", "grounds", "comps", "documents", "submit"]);
+  });
+  it("sends the owner to the county's filing system for the filing year", () => {
+    expect(step("start").link!.href).toBe(LINKS.assessorFileDirect(2026));
+    expect(step("start").link!.href).toMatch(/propertytaxfilings\.cookcountyil\.gov.*CCAO_APPEAL_RES_2026$/);
+    expect(step("account").link!.href).toBe(LINKS.assessorFile);
+  });
+  it("warns: PIN or address but not both", () => {
+    expect(step("start").body.join(" ")).toMatch(/PIN OR by address: enter one, not both/);
   });
   it("offers the PIN in both formats", () => {
-    expect(p.steps.find((s) => s.id === "pin")!.copy!.map((c) => c.value)).toEqual(["99-99-999-999-9999", "99999999999999"]);
+    expect(step("start").copy!.map((c) => c.value)).toEqual(["99-99-999-999-9999", "99999999999999"]);
   });
-  it("lists every comp with a copyable PIN, and warns against double dockets", () => {
-    const step = p.steps.find((s) => s.id === "comps")!;
-    expect(step.copy).toHaveLength(6);
-    expect(step.copy![0].value).toMatch(/^\d{2}-\d{2}-\d{3}-\d{3}-\d{4}$/);
-    expect(step.body.join(" ")).toMatch(/double docket/);
+  it("keeps comparables off the additional-PINs page", () => {
+    expect(step("pages").body.join(" ")).toMatch(/Do not enter comparable properties here/);
+  });
+  it("tells the owner to choose Taxpayer Owner and to check characteristics", () => {
+    expect(step("filer").body.join(" ")).toMatch(/Taxpayer Owner/);
+    expect(step("characteristics").body.join(" ")).toMatch(/built 1960/);
+  });
+  it("says comps are optional and up to six, with the county's exact file names", () => {
+    const body = step("comps").body.join(" ");
+    expect(step("comps").title).toMatch(/up to 6/);
+    expect(body).toMatch(/optional/);
+    expect(body).toContain("Comparable PINs for 99-99-999-999-9999.xlsx");
+    expect(body).toContain("Comparable PIN xx-xx-xxx-xxx-xxxx.pdf");
+    expect(body).toContain("Comparable PINs Data");
+  });
+  it("lists every comp with a copyable PIN and offers the Excel file to download", () => {
+    expect(step("comps").copy).toHaveLength(6);
+    expect(step("comps").copy![0].value).toMatch(/^\d{2}-\d{2}-\d{3}-\d{3}-\d{4}$/);
+    expect(step("comps").download).toEqual({
+      href: "/property/99999999999999/file/comps", label: "Download the comps Excel file", filename: "Comparable PINs for 99-99-999-999-9999.xlsx",
+    });
+  });
+  it("advises a narrative, and pausing at 'Are you sure?' because a submitted filing can't be changed", () => {
+    expect(step("documents").body.join(" ")).toMatch(/narrative/);
+    expect(step("submit").body.join(" ")).toMatch(/Are you sure\?.*pause/);
+    expect(step("ready").body.join(" ")).toMatch(/cannot change the filing/);
+  });
+  it("explains Filing ID versus docket number, and that results come by mail", () => {
+    const body = step("submit").body.join(" ");
+    expect(body).toMatch(/Filing ID.*not your docket number/);
+    expect(body).toMatch(/by mail/);
   });
   it("uses MAILED values in the statement", () => {
     expect(p.statement).toMatch(/mailed 2026/);
     expect(p.statement).toMatch(/\$24\.00\/sf/);
+  });
+  it("never offers a comps download to a property that isn't over-assessed", () => {
+    const low = prop({ pin: "88888888888888", address: "5 LOW ST", bldgValue: 12 * 1500 });
+    const r = findComps(low, [10, 16, 17, 18, 19, 20, 21].map((x) => prop({ bldgValue: x * 1500 })));
+    const q = buildFilingPlan({ entry: entry({}), property: low, comps: { result: r, valueYear: 2026 }, today: "2026-11-22" });
+    expect(q.steps.some((x) => x.download)).toBe(false);
   });
 });
 

@@ -4,11 +4,11 @@ import { notFound } from "next/navigation";
 import { CopyButton } from "@/components/CopyButton";
 import { PrintButton } from "@/components/PrintButton";
 import { StepList } from "@/components/StepList";
-import { appealStage, type CalendarEntry } from "@/lib/calendar";
+import { appealStage } from "@/lib/calendar";
 import { buildFilingPlan } from "@/lib/filing";
 import { todayIso } from "@/lib/format";
 import { formatPin, normalizePin } from "@/lib/pin";
-import { getCalendarForTownship, getComps, getProperty, type CalendarRow } from "@/lib/queries";
+import { getCalendarForTownship, getComps, getProperty, toCalendarEntry } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -19,14 +19,6 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return { title: pin ? `Appeal checklist · PIN ${formatPin(pin)}` : "Appeal checklist" };
 }
 
-function toEntry(r: CalendarRow): CalendarEntry {
-  return {
-    year: r.year, region: r.region, township: r.township, noticeDate: r.notice_date, lastFileDate: r.last_file_date,
-    aRollCertified: r.a_roll_certified, aRollPublished: r.a_roll_published, borStart: r.bor_start, borEnd: r.bor_end,
-    pass: r.pass, statusText: r.status_text ?? "", borEvidenceDeadline: r.bor_evidence_deadline,
-  };
-}
-
 export default async function FilingChecklist({ params }: Params) {
   const pin = normalizePin((await params).pin);
   if (!pin) notFound();
@@ -34,7 +26,7 @@ export default async function FilingChecklist({ params }: Params) {
   if (!property) notFound();
 
   const calRow = property.townshipName ? await getCalendarForTownship(property.townshipName) : null;
-  const entry = calRow ? toEntry(calRow) : null;
+  const entry = calRow ? toCalendarEntry(calRow) : null;
   const today = todayIso();
   const stage = entry ? appealStage(entry, today) : null;
   // Assessor appeals compare MAILED values; the Board of Review compares CERTIFIED values.

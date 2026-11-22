@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { appealStage, type AppealStage, type CalendarEntry } from "@/lib/calendar";
 import { formatPin, normalizePin } from "@/lib/pin";
 import { getBorAppeals, getCalendarForTownship, getComps, getProperty, getValueHistory, type CalendarRow } from "@/lib/queries";
+import { isAboveMedian } from "@/lib/filing";
 import { money, niceDate, num, perSf, todayIso } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -102,6 +103,16 @@ export default async function PropertyPage({ params }: Params) {
 
       <h2>Appeal window</h2>
       {entry && stage ? <StageBanner stage={stage} e={entry} /> : <div className="banner warn">We don&apos;t have calendar data for this township yet.</div>}
+
+      {(stage === "assessor_open" || stage === "bor_open") && (
+        <p>
+          {isAboveMedian(comps?.result ?? null) === false ? (
+            <Link className="btn" href={`/property/${pin}/file`}>See the filing checklist (your property is assessed at or below similar properties)</Link>
+          ) : (
+            <Link className="btn primary" href={`/property/${pin}/file`}>Start your appeal checklist →</Link>
+          )}
+        </p>
+      )}
 
       <h2>Assessment history</h2>
       <div className="table-wrap">

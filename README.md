@@ -6,7 +6,7 @@ Helps Cook County, Illinois homeowners check their property assessment and appea
 2. **See history**: assessed values by year (mailed, certified, Board of Review) and Board of Review appeal results.
 3. **Know when to act**: the Assessor's and Board of Review's appeal windows for the property's township, from the Assessor's calendar.
 4. **Get comparables**: the properties to cite in an appeal, chosen by the uniformity logic in `src/lib/comps.ts`.
-5. **Assisted filing** (not built yet): a prefilled checklist and generated mail-in forms. The homeowner files; we do not file for them.
+5. **Assisted filing**: a step-by-step checklist at `/property/<pin>/file` for whichever window is open (Assessor or Board of Review), with copy buttons for the PIN and comps, a draft explanation, and the deadline. **The homeowner files; we never file for them.**
 
 ## Stack
 Next.js (App Router, TypeScript) + Postgres. Data comes from the Cook County open-data portal (Socrata) and the Assessor's calendar page. No scraping of per-property pages, and no logins are needed.
@@ -59,9 +59,20 @@ Reproduce exactly with `npm run compare -- --township=<code> --sample=300` (a de
 
 Ranking by similarity instead of lowest ratio gives closer, more similar comps at the cost of a smaller ratio gap, i.e. a more defensible but less aggressive argument. Coverage is identical under both policies because eligibility is identical; only the choice among eligible properties differs. An early test on a non-random sample suggested the old absolute size windows (±294 sq ft / ±1,242 sq ft) were the binding constraint, which is why tolerances are now percentages; that comparison was not repeated on a random sample.
 
+## Assisted filing checklist
+Built from the county's published instructions (Assessor "File an Appeal Online" page and 2026 Appeal Guidelines; Board of Review residential pages). Logic lives in `src/lib/filing.ts` and is unit-tested; the UI is thin.
+
+- **Only when a window is open.** Otherwise it shows when the window opens or closed, with no link to a filing form (the Assessor warns that a file started early may be deleted).
+- **Right basis for the right window.** Assessor appeals compare mailed values; Board of Review appeals compare certified values.
+- **Not for everyone.** If a property is assessed **at or below the median of its similar properties**, the checklist says a comparables appeal is unlikely to help, and drafts no explanation, shows no "saving" and suggests no comps. (Without this gate, a below-median home was being told to file with a statement claiming it was over-assessed.)
+- **Progress is kept in the browser only** (localStorage). Nothing about the user is stored server-side; there are no accounts yet.
+- **Not verified:** the Board of Review's online portal could not be reached from our environment, so its steps point to the county's own instructions instead of describing its screens. The Assessor's application fields are not described either.
+- The old site's mail-in-form rounds are gone: both bodies now take online filings (the Board also accepts a mailed or delivered complaint form).
+
 ## Open questions
 - **Tolerances and weights are tuned for coverage and similarity, not outcomes.** There is no dataset of which comps were submitted, so we can't measure which settings win appeals. Tested on one township only. Track results as customers appeal.
 - **About 1 in 6 homes get no comps**, typically because similar properties aren't assessed lower (already uniform) or the property is atypical. The page says so instead of forcing weak comps.
-- **Legal.** Filing on someone's behalf may be unauthorized practice of law in Illinois, and automating the county's portal may breach its terms. Get legal advice before building anything beyond assisted filing.
+- **Legal (get advice before launching or charging).** The Board of Review states that "a consultant MAY NOT represent a homeowner at the BOR," and that LLC- or corporation-owned property must be appealed by an attorney. The checklist is built so the homeowner files for themselves and says so, but whether a paid service that prepares comps and a draft statement stays on the right side of that line is a question for an Illinois attorney. Filing on someone's behalf or automating the county portals is out of scope.
 - **Product.** Which parts are free vs. paid, and accounts/payments, are not designed yet.
-- **Not built yet:** address autocomplete, email alerts, assisted-filing checklist and PDF generation, auth, deployment.
+- **Appeal strength isn't graded.** A home slightly above its median and one far above it get the same checklist. Consider showing how strong the case is.
+- **Not built yet:** address autocomplete, email alerts, auth, payments, deployment.

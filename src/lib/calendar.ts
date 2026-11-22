@@ -12,6 +12,8 @@ export interface CalendarEntry {
   borEnd: string | null;
   pass: number | null;
   statusText: string;
+  /** From the Board of Review's own schedule (not on the Assessor's page). */
+  borEvidenceDeadline?: string | null;
 }
 
 export type AppealStage = "not_scheduled" | "upcoming" | "assessor_open" | "between" | "bor_open" | "closed";

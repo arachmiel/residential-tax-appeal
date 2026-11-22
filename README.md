@@ -26,7 +26,7 @@ npm run dev
 |---|---|
 | `npm run db:migrate` | Applies `db/schema.sql` (idempotent) |
 | `npm run load` | Bulk-loads assessed values, addresses, characteristics and Board of Review appeals. Flags: `--only=<dataset>`, `--from-year=<yyyy>`, `--township=<code>` |
-| `npm run sync:calendar` | Parses the Assessor's calendar page. Run daily. Fails loudly if the page layout changes |
+| `npm run sync:calendar` | Refreshes appeal dates from both the Assessor's page and the Board of Review's PDF. Run daily. Each source fails loudly if its layout changes, and one failing doesn't block the other |
 | `npm test` / `npm run typecheck` | Unit tests (comps, PIN, calendar parser against a saved real page) / types |
 
 Full-county size (residential classes, default year ranges): assessed values ≈ 5M rows, characteristics ≈ 1M per year, appeals ≈ 2M. Plan on a few GB of Postgres.
@@ -38,7 +38,8 @@ Full-county size (residential classes, default year ranges): assessed values ≈
 | Property addresses | `3723-97qp` (situs address only; owner/mailing fields are never requested) |
 | Characteristics | `x54s-btds` (current; the older `bcnq-qi2z` is archived) |
 | Board of Review appeals | `7pny-nedm` (appellant and attorney fields are never stored) |
-| Appeal calendar | https://www.cookcountyassessoril.gov/assessment-calendar-and-deadlines (HTML, parsed) |
+| Assessor appeal calendar | https://www.cookcountyassessoril.gov/assessment-calendar-and-deadlines (HTML, parsed by `src/lib/calendar.ts`) |
+| Board of Review schedule | https://www.cookcountyboardofreview.com/dates-and-deadlines links a one-page PDF (parsed by `src/lib/bor.ts`). Authoritative for Board of Review dates; it lists townships (in hearing groups) before the Assessor's page does. Townships it doesn't list yet have no Board of Review dates published. |
 
 ## How comps work
 `ratio = building assessed value ÷ building sq ft`. The Assessor's 2026 appeal guidelines say comps should be chosen for what they share with the subject (proximity, size, age, exterior, basement, land, garage) and **not** cherry-picked as the lowest-valued properties. So selection has two steps (`src/lib/comps.ts`):

@@ -99,6 +99,22 @@ create table if not exists appeal_calendar (
   primary key (year, township)
 );
 
+-- Board of Review schedule (src/lib/bor.ts). The Board publishes its own dates, which are authoritative for BOR appeals
+-- and cover townships the Assessor's calendar page doesn't show BOR dates for yet.
+create table if not exists bor_schedule (
+  year              integer not null,
+  township          text    not null,
+  grp               integer not null,
+  open_date         date    not null,
+  close_date        date    not null,
+  evidence_deadline date,
+  re_review_open    date,
+  re_review_close   date,
+  hearing_dates     text,
+  fetched_at        timestamptz not null default now(),
+  primary key (year, township)
+);
+
 create table if not exists load_log (
   dataset    text primary key,
   loaded_at  timestamptz not null default now(),

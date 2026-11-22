@@ -19,7 +19,7 @@ function toEntry(r: CalendarRow): CalendarEntry {
   return {
     year: r.year, region: r.region, township: r.township, noticeDate: r.notice_date, lastFileDate: r.last_file_date,
     aRollCertified: r.a_roll_certified, aRollPublished: r.a_roll_published, borStart: r.bor_start, borEnd: r.bor_end,
-    pass: r.pass, statusText: r.status_text ?? "",
+    pass: r.pass, statusText: r.status_text ?? "", borEvidenceDeadline: r.bor_evidence_deadline,
   };
 }
 
@@ -37,6 +37,8 @@ function StageBanner({ stage, e }: { stage: AppealStage; e: CalendarEntry }) {
         <div className="banner open">
           <strong>The Board of Review is open for your township</strong>
           Appeals accepted {niceDate(e.borStart)} – {niceDate(e.borEnd)}.
+          {e.borEvidenceDeadline ? ` Evidence is due ${niceDate(e.borEvidenceDeadline)}.` : ""}{" "}
+          <a href="https://www.cookcountyboardofreview.com/dates-and-deadlines">Board of Review dates</a>
         </div>
       );
     case "upcoming":

@@ -114,15 +114,27 @@ export interface CalendarRow {
   year: number; region: string; township: string;
   notice_date: string | null; last_file_date: string | null; a_roll_certified: string | null; a_roll_published: string | null;
   bor_start: string | null; bor_end: string | null; pass: number | null; status_text: string | null;
+  bor_evidence_deadline: string | null;
 }
 
+/**
+ * Appeal dates for a township. The Board of Review's own schedule (bor_schedule) is authoritative for Board of Review
+ * dates; the Assessor's calendar page supplies the Assessor dates, and its BOR dates only when the Board's schedule
+ * doesn't list the township yet.
+ */
 export async function getCalendarForTownship(townshipName: string): Promise<CalendarRow | null> {
   const { rows } = await db().query(
-    `select year, region, township,
-            to_char(notice_date,'YYYY-MM-DD') notice_date, to_char(last_file_date,'YYYY-MM-DD') last_file_date,
-            to_char(a_roll_certified,'YYYY-MM-DD') a_roll_certified, to_char(a_roll_published,'YYYY-MM-DD') a_roll_published,
-            to_char(bor_start,'YYYY-MM-DD') bor_start, to_char(bor_end,'YYYY-MM-DD') bor_end, pass, status_text
-       from appeal_calendar where lower(township) = lower($1) order by year desc limit 1`,
+    `select ac.year, ac.region, ac.township,
+            to_char(ac.notice_date,'YYYY-MM-DD') notice_date, to_char(ac.last_file_date,'YYYY-MM-DD') last_file_date,
+            to_char(ac.a_roll_certified,'YYYY-MM-DD') a_roll_certified, to_char(ac.a_roll_published,'YYYY-MM-DD') a_roll_published,
+            to_char(coalesce(bs.open_date, ac.bor_start),'YYYY-MM-DD') bor_start,
+            to_char(coalesce(bs.close_date, ac.bor_end),'YYYY-MM-DD') bor_end,
+            to_char(bs.evidence_deadline,'YYYY-MM-DD') bor_evidence_deadline,
+            ac.pass, ac.status_text
+       from appeal_calendar ac
+       left join bor_schedule bs on bs.year = ac.year and lower(bs.township) = lower(ac.township)
+      where lower(ac.township) = lower($1)
+      order by ac.year desc limit 1`,
     [townshipName],
   );
   return rows[0] ?? null;

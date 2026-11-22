@@ -39,8 +39,9 @@ export function parseCalendar(html: string): CalendarEntry[] {
     const id = $(set).attr("id");
     const idx = id ? html.indexOf(`id="${id}"`) : -1;
     const before = idx > 0 ? html.slice(Math.max(0, idx - 4000), idx) : "";
-    const beforeText = cheerio.load(`<div>${before}</div>`)("div").text(); // strips tags, decodes &amp; etc.
-    const labels = [...beforeText.matchAll(/(\d{4}) Assessment Calendar:\s*([^\n]+?)\s{2,}/g)];
+    // Tags become line breaks (so a heading never runs into the paragraph after it); text() decodes &amp; etc.
+    const beforeText = cheerio.load(`<div>${before.replace(/<[^>]+>/g, "\n")}</div>`)("div").text();
+    const labels = [...beforeText.matchAll(/(\d{4}) Assessment Calendar:[ \t]*([^\n]+)/g)];
     const label = labels.at(-1);
     const year = label ? Number(label[1]) : NaN;
     const region = label ? label[2].trim() : "Unknown";

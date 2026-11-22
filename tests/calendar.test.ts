@@ -15,8 +15,9 @@ describe("parseCalendar (real page snapshot, 2026-11-22)", () => {
 
   it("labels the region and year of each calendar set", () => {
     expect(find("Thornton").year).toBe(2026);
-    expect(find("Thornton").region).toMatch(/South & West/);
-    expect(find("Niles").region).toMatch(/North Suburbs/);
+    expect(find("Thornton").region).toBe("South & West Suburban Cook County");
+    expect(find("Niles").region).toBe("North Suburbs & City of Chicago");
+    expect(find("Maine").region).toBe("North Suburbs & City of Chicago");
   });
 
   it("parses an open township", () => {

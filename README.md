@@ -48,13 +48,15 @@ Full-county size (residential classes, default year ranges): assessed values ≈
 
 Appeal 1 (Assessor) compares **mailed** values; the Board of Review compares **certified** values.
 
-### Tuning results (River Forest, 80 real homes)
-| | Full set of 6 comps | Partial | None |
-|---|---|---|---|
-| Original rules (absolute ±294 sq ft / ±1,242 sq ft) | 25 | 33 | 22 |
-| Percentage tolerances (current) | 42 | 24 | 14 |
+### Tuning results
+Reproduce exactly with `npm run compare -- --township=<code> --sample=300` (a deterministic pseudo-random sample across the whole township). Samples of 80 homes proved too noisy: River Forest's full-set rate ranged from 29 to 42 of 80 across different samples.
 
-The building- and land-size limits were the binding constraint (age and the $1 gap barely mattered). Choosing the most similar instead of the lowest gave comps that are closer (median 0.21 mi vs 0.26 mi) and more similar, at the cost of a smaller ratio gap (median $3.02/sf vs $4.22/sf below the subject), i.e. a more defensible but less aggressive argument. Re-run on more townships before trusting the exact numbers.
+| Township (300 homes) | Full set of 6 | Partial | None | Median miles to comps | Median $/sf below subject |
+|---|---|---|---|---|---|
+| Maine (22) | 158 (53%) | 75 | 67 | 0.27 mi (0.49 if lowest-ratio wins) | $1.97 ($3.28) |
+| River Forest (33) | 123 (41%) | 109 | 68 | 0.22 mi (0.26) | $2.96 ($3.78) |
+
+Ranking by similarity instead of lowest ratio gives closer, more similar comps at the cost of a smaller ratio gap, i.e. a more defensible but less aggressive argument. Coverage is identical under both policies because eligibility is identical; only the choice among eligible properties differs. An early test on a non-random sample suggested the old absolute size windows (±294 sq ft / ±1,242 sq ft) were the binding constraint, which is why tolerances are now percentages; that comparison was not repeated on a random sample.
 
 ## Open questions
 - **Tolerances and weights are tuned for coverage and similarity, not outcomes.** There is no dataset of which comps were submitted, so we can't measure which settings win appeals. Tested on one township only. Track results as customers appeal.

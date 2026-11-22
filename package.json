@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
     "load": "tsx scripts/load-socrata.ts",
-    "sync:calendar": "tsx scripts/sync-calendar.ts"
+    "sync:calendar": "tsx scripts/sync-calendar.ts",
+    "compare": "tsx scripts/compare-comps.ts"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

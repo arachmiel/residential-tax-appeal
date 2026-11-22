@@ -31,6 +31,9 @@ npm run dev
 
 Full-county size (residential classes, default year ranges): assessed values ≈ 5M rows, characteristics ≈ 1M per year, appeals ≈ 2M. Plan on a few GB of Postgres.
 
+## Deploying
+See [`docs/DEPLOY.md`](docs/DEPLOY.md): Hostinger Business web hosting for the app plus a managed Postgres, with a password gate (`SITE_PASSWORD`) and a self-test at `/api/health`. GitHub Actions run the daily calendar sync (`sync-calendar.yml`) and a manual data load (`load-data.yml`); both need the `DATABASE_URL` secret and must be on `main` to run. Shared hosts without Node.js cannot run this app.
+
 ## Data sources
 | Data | Dataset |
 |---|---|

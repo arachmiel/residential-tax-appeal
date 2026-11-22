@@ -1,0 +1,59 @@
+name: Load county data
+# Manual. Loads Cook County open data into the production database. Start with ONE township to check everything works,
+# then run again without a township for the whole county (large: several GB and a long run).
+on:
+  workflow_dispatch:
+    inputs:
+      township:
+        description: "Township code to load (e.g. 22 for Maine). Leave empty for the whole county."
+        required: false
+        default: ""
+      only:
+        description: "Load just one dataset"
+        type: choice
+        default: all
+        options: [all, assessed_values, parcel_addresses, characteristics, parcels, bor_appeals]
+      from_year:
+        description: "Earliest year to load (optional, e.g. 2022)"
+        required: false
+        default: ""
+permissions:
+  contents: read
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate inputs
+        # Inputs reach the shell only through env vars and are checked before use (no injection into the command line).
+        env:
+          TOWNSHIP: ${{ inputs.township }}
+          FROM_YEAR: ${{ inputs.from_year }}
+        run: |
+          [[ -z "$TOWNSHIP" || "$TOWNSHIP" =~ ^[0-9]{1,3}$ ]] || { echo "township must be a number"; exit 1; }
+          [[ -z "$FROM_YEAR" || "$FROM_YEAR" =~ ^[0-9]{4}$ ]] || { echo "from_year must be a 4-digit year"; exit 1; }
+      - run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Load data
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          COOK_COUNTY_API_APP_TOKEN: ${{ secrets.COOK_COUNTY_API_APP_TOKEN }}
+          TOWNSHIP: ${{ inputs.township }}
+          ONLY: ${{ inputs.only }}
+          FROM_YEAR: ${{ inputs.from_year }}
+        run: |
+          args=()
+          [[ "$ONLY" != "all" ]] && args+=("--only=$ONLY")
+          [[ -n "$TOWNSHIP" ]] && args+=("--township=$TOWNSHIP")
+          [[ -n "$FROM_YEAR" ]] && args+=("--from-year=$FROM_YEAR")
+          npm run load -- "${args[@]}"
+      - run: npm run sync:calendar
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

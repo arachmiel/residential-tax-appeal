@@ -1,0 +1,25 @@
+name: Sync appeal calendar
+# Refreshes the Assessor and Board of Review dates once a day. Scheduled workflows run from the default branch.
+on:
+  schedule:
+    - cron: "17 11 * * *" # 11:17 UTC daily (early morning in Chicago)
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - run: npm run sync:calendar
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

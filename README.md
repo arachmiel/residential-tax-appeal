@@ -66,7 +66,9 @@ Built from the county's published instructions (Assessor "File an Appeal Online"
 - **Right basis for the right window.** Assessor appeals compare mailed values; Board of Review appeals compare certified values.
 - **Not for everyone.** If a property is assessed **at or below the median of its similar properties**, the checklist says a comparables appeal is unlikely to help, and drafts no explanation, shows no "saving" and suggests no comps. (Without this gate, a below-median home was being told to file with a statement claiming it was over-assessed.)
 - **Progress is kept in the browser only** (localStorage). Nothing about the user is stored server-side; there are no accounts yet.
-- **Not verified:** the Board of Review's online portal could not be reached from our environment, so its steps point to the county's own instructions instead of describing its screens. The Assessor's application fields are not described either.
+- **Board of Review steps come from the former site's walkthrough** (account, Submit Appeal, "Property Over Assessment", Associated PINs = No, hearing question, purchase-year dropdown, comps on the Notes page, confirm/initial/submit) plus the Board's account-registration page. The portal itself could not be reached from our environment, so these screens have not been re-checked and may have changed; the checklist says so. The Board of Review notes list **4** comps (`BOR_NOTES_COMPS`), as the former instructions did; confirm against the live portal.
+- **Assessor steps are less detailed** than the Board's: they follow the Assessor's published steps, because that walkthrough lives in a video we could not read. Add the screen-by-screen steps when available.
+- The Assessor's filing system is run by Tyler Technologies (`propertytaxfilings.cookcountyil.gov`); the checklist links to its residential filing for the filing year.
 - The old site's mail-in-form rounds are gone: both bodies now take online filings (the Board also accepts a mailed or delivered complaint form).
 
 ## Open questions

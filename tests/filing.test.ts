@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CalendarEntry } from "@/lib/calendar";
 import { findComps, type Property } from "@/lib/comps";
-import { buildFilingPlan, daysBetween, describeDaysLeft, LINKS, type FilingPlan } from "@/lib/filing";
+import { BOR_NOTES_COMPS, buildFilingPlan, daysBetween, describeDaysLeft, LINKS, type FilingPlan } from "@/lib/filing";
 
 let n = 0;
 const prop = (o: Partial<Property> = {}): Property => ({
@@ -50,6 +50,8 @@ describe("when the window is not open", () => {
     expect(p.steps).toEqual([]);
     expect(text(p)).not.toContain(LINKS.assessorFile);
     expect(text(p)).not.toContain(LINKS.borFile);
+    expect(text(p)).not.toContain("propertytaxfilings.cookcountyil.gov");
+    expect(text(p)).not.toContain("appeals.cookcountyboardofreview.com");
   });
   it("says when the Board of Review opens", () => {
     const p = buildFilingPlan(input(entry({ lastFileDate: "2026-11-01", borStart: "2026-12-01", borEnd: "2026-12-30" }), "2026-11-22"));
@@ -67,7 +69,8 @@ describe("Assessor track", () => {
   });
   it("walks through the county's steps and links to the official filing page", () => {
     expect(p.steps.map((s) => s.id)).toEqual(["ready", "open", "pin", "comps", "explain", "submit"]);
-    expect(p.steps.find((s) => s.id === "open")!.link!.href).toBe(LINKS.assessorFile);
+    expect(p.steps.find((s) => s.id === "open")!.link!.href).toBe(LINKS.assessorFileDirect(2026));
+    expect(p.steps.find((s) => s.id === "open")!.link!.href).toMatch(/propertytaxfilings\.cookcountyil\.gov.*CCAO_APPEAL_RES_2026$/);
   });
   it("offers the PIN in both formats", () => {
     expect(p.steps.find((s) => s.id === "pin")!.copy!.map((c) => c.value)).toEqual(["99-99-999-999-9999", "99999999999999"]);
@@ -87,25 +90,48 @@ describe("Assessor track", () => {
 describe("Board of Review track", () => {
   const e = entry({ lastFileDate: "2026-10-01", borStart: "2026-11-09", borEnd: "2026-12-08", borEvidenceDeadline: "2026-12-18" });
   const p = buildFilingPlan(input(e, "2026-11-22"));
+  const step = (id: string) => p.steps.find((s) => s.id === id)!;
   it("is chosen when the Board window is open", () => {
     expect(p.track).toBe("bor");
     expect(p.deadline).toBe("2026-12-08");
     expect(p.daysLeft).toBe(16);
     expect(p.evidenceDeadline).toBe("2026-12-18");
   });
+  it("follows the portal flow: account, start, details, notes, confirm", () => {
+    expect(p.steps.map((s) => s.id)).toEqual(["eligible", "ready", "account", "start", "details", "comps", "confirm", "evidence"]);
+  });
   it("says a consultant may not represent a homeowner, and that LLC/corporate owners need an attorney", () => {
-    const body = p.steps.find((s) => s.id === "eligible")!.body.join(" ");
-    expect(body).toMatch(/consultant may not represent/i);
-    expect(body).toMatch(/LLC/);
+    expect(step("eligible").body.join(" ")).toMatch(/consultant may not represent/i);
+    expect(step("eligible").body.join(" ")).toMatch(/LLC/);
   });
-  it("uses CERTIFIED values and links to the Board of Review", () => {
-    expect(p.statement).toMatch(/certified 2026/);
-    expect(p.steps.find((s) => s.id === "file")!.link!.href).toBe(LINKS.borFile);
+  it("tells a first-time user to register, answering No to 'registering as an Attorney'", () => {
+    expect(step("account").body.join(" ")).toMatch(/Are you registering as an Attorney\?.*No/);
+    expect(step("account").link!.href).toBe(LINKS.borLogin);
   });
-  it("mentions the evidence deadline and that a hearing is optional", () => {
-    const body = p.steps.find((s) => s.id === "evidence")!.body.join(" ");
-    expect(body).toMatch(/Dec 18, 2026/);
+  it("walks the start of the complaint: Property Over Assessment, PIN, Associated PINs = No", () => {
+    const body = step("start").body.join(" ");
+    expect(body).toMatch(/Property Over Assessment/);
+    expect(body).toMatch(/Associated PINs.*No/);
+    expect(step("start").link!.href).toBe(LINKS.borFile);
+    expect(step("start").copy!.map((c) => c.value)).toEqual(["99-99-999-999-9999", "99999999999999"]);
+  });
+  it("covers the hearing choice (optional) and the purchase-year dropdown", () => {
+    const body = step("details").body.join(" ");
     expect(body).toMatch(/optional/);
+    expect(body).toMatch(/Purchase year/);
+    expect(body).toMatch(/Other/);
+  });
+  it("uses only the first 4 comps on the Notes page, and CERTIFIED values", () => {
+    expect(step("comps").copy).toHaveLength(BOR_NOTES_COMPS);
+    expect(p.statement).toMatch(/certified 2026/);
+    expect(p.statement).toMatch(/I am submitting 4 comparable properties/);
+  });
+  it("ends with confirm, initial and submit", () => {
+    expect(step("confirm").body.join(" ")).toMatch(/initial/i);
+  });
+  it("makes the evidence step conditional on choosing a hearing, with the deadline", () => {
+    expect(step("evidence").title).toMatch(/Only if you chose a hearing/);
+    expect(step("evidence").body.join(" ")).toMatch(/Dec 18, 2026/);
   });
 });
 
@@ -167,6 +193,18 @@ describe("a property that is NOT over-assessed relative to its neighbors (the re
   });
   it("still says the deadline, so the owner can decide on other grounds", () => {
     expect(plan.deadline).toBe("2026-12-07");
+  });
+});
+
+describe("Board of Review track for a property that is not over-assessed", () => {
+  it("still gives no comps or statement", () => {
+    const low = prop({ pin: "77777777777777", address: "9 LOW ST", bldgValue: 12 * 1500 });
+    const r = findComps(low, [10, 16, 17, 18, 19, 20, 21].map((x) => prop({ bldgValue: x * 1500 })));
+    const p = buildFilingPlan({ entry: entry({ lastFileDate: "2026-10-01", borStart: "2026-11-09", borEnd: "2026-12-08" }), property: low, comps: { result: r, valueYear: 2026 }, today: "2026-11-22" });
+    expect(p.track).toBe("bor");
+    expect(p.supportsAppeal).toBe(false);
+    expect(p.statement).toBeNull();
+    expect(p.steps.find((s) => s.id === "comps")!.copy).toBeUndefined();
   });
 });
 

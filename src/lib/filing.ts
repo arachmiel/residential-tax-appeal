@@ -46,11 +46,18 @@ export interface FilingPlan {
   warnings: string[];
 }
 
+/** The Board of Review notes page: our earlier walkthrough of the portal listed the first 4 comparables there. Confirm against the live portal. */
+export const BOR_NOTES_COMPS = 4;
+
 export const LINKS = {
   assessorFile: "https://www.cookcountyassessoril.gov/online-appeals",
+  /** The county's filing system (Tyler Technologies). The year suffix is the filing year; the info page is the same for 2024-2026. */
+  assessorFileDirect: (year: number) => `https://propertytaxfilings.cookcountyil.gov/Filing/FilingType/Info/CCAO_APPEAL_RES_${year}`,
   assessorGuidelines: "https://prodassets.cookcountyassessoril.gov/s3fs-public/event/2026%20Appeal%20Guidelines%203.13.2026.pdf",
   assessorCalendar: "https://www.cookcountyassessoril.gov/assessment-calendar-and-deadlines",
   borFile: "https://appeals.cookcountyboardofreview.com/SubmitAppeal/AppealPage1",
+  borLogin: "https://appeals.cookcountyboardofreview.com/Account/LoginPage",
+  borRegister: "https://www.cookcountyboardofreview.com/about/archive/registering-an-online-account-for-property-owners",
   borResidential: "https://www.cookcountyboardofreview.com/residential-appeals",
   borHearings: "https://www.cookcountyboardofreview.com/residential-hearings",
   borDates: "https://www.cookcountyboardofreview.com/dates-and-deadlines",
@@ -128,7 +135,9 @@ export function buildFilingPlan({ entry, property, comps, today }: PlanInput): F
   const basis = track === "assessor" ? "mailed" : "certified";
 
   const r = comps?.result ?? null;
-  const list = r?.comps ?? [];
+  const allComps = r?.comps ?? [];
+  // The Board of Review notes page takes fewer comps than the Assessor application.
+  const list = track === "bor" ? allComps.slice(0, BOR_NOTES_COMPS) : allComps;
   const pinDashed = formatPin(property.pin);
   const warnings: string[] = [...(r?.warnings ?? [])];
   if (!comps) warnings.push("We couldn't compute comparable properties for this PIN (missing building size or value data). You may still appeal on other grounds.");
@@ -190,7 +199,8 @@ export function buildFilingPlan({ entry, property, comps, today }: PlanInput): F
             ] },
           { id: "open", title: "Open the Assessor's online filing and choose Residential", body: [
               "Residential covers single-family homes, townhomes and buildings with no more than six units. You can save a draft and come back before submitting.",
-            ], link: { href: LINKS.assessorFile, label: "Open the Assessor's filing page" } },
+              "Click Begin Filing on the county's filing system. Starting before your township is open may result in a deleted file.",
+            ], link: { href: LINKS.assessorFileDirect(entry.year), label: "Begin the residential filing (county filing system)" } },
           { id: "pin", title: "Enter your PIN", body: ["Use whichever format the form accepts."],
             copy: [{ label: "Your PIN (with dashes)", value: pinDashed }, { label: "Your PIN (digits only)", value: property.pin }] },
           compsStep,
@@ -198,6 +208,7 @@ export function buildFilingPlan({ entry, property, comps, today }: PlanInput): F
           { id: "submit", title: `Review and submit by ${niceDate(deadline)}`, body: [
               "Submit once. You'll get an email confirming your submission and a second email with your docket number. Keep both.",
               "The Assessor mails the result.",
+              `The Assessor's own page and guidelines have the latest instructions: ${LINKS.assessorFile}`,
             ], link: { href: LINKS.assessorGuidelines, label: "Read the Assessor's 2026 appeal guidelines" } },
         ]
       : [
@@ -206,19 +217,37 @@ export function buildFilingPlan({ entry, property, comps, today }: PlanInput): F
               "Residential means a single-family home, small apartment building or mixed-use property with fewer than 7 units and under 20,000 sq ft.",
             ], link: { href: LINKS.borResidential, label: "Board of Review residential filing" } },
           { id: "ready", title: "Get ready", body: [
-              `Your township's Board of Review window closes ${niceDate(deadline)} (${describeDaysLeft(daysLeft)}).`,
+              `Your township's Board of Review window closes ${niceDate(deadline)} (${describeDaysLeft(daysLeft)}). Only one complaint per PIN.`,
               "The Board compares the certified values (after the Assessor's review), so the comparison below uses certified values.",
+              "These portal steps come from our earlier walkthrough of the Board of Review's online system. Screens can change, so if something differs, follow what the portal says. You can instead deliver or mail an original complaint form (call " + LINKS.borPhone + ").",
             ] },
-          { id: "file", title: "File your complaint", body: [
-              `File online, or deliver or mail an original Board of Review complaint form (forms are at Board of Review offices, or call ${LINKS.borPhone}). We could not test the Board's online portal, so follow its on-screen instructions.`,
+          { id: "account", title: "Create or log in to your Board of Review account", body: [
+              "First time: register with a user name, password, your first and last name, and your email address. When asked \"Are you registering as an Attorney?\", pick No.",
+              "You'll see your user name at the top right once you're signed in.",
+            ], link: { href: LINKS.borLogin, label: "Log in to the Board of Review portal" } },
+          { id: "start", title: "Start the complaint", body: [
+              "Click Submit Appeal, then pick \"Property Over Assessment\" from the dropdown and enter your PIN.",
+              "When asked about Associated PINs, pick No (you are appealing a single PIN), then submit.",
             ], link: { href: LINKS.borFile, label: "Open the Board of Review's online filing" },
             copy: [{ label: "Your PIN (with dashes)", value: pinDashed }, { label: "Your PIN (digits only)", value: property.pin }] },
-          compsStep,
-          { id: "evidence", title: "Decide about a hearing and gather evidence", body: [
-              "A hearing is optional and held by phone; you will not be penalized for waiving it. If you want one, the Board asks for supporting documents by the deadline after your township closes" + (evidenceDeadline ? `: ${niceDate(evidenceDeadline)}.` : "."),
-              "Typical evidence: a current photo of your property's exterior, the PINs of your comparable properties, and a signed statement explaining why you think the property is over-assessed (draft below).",
+          { id: "details", title: "Fill in your details", body: [
+              "Check or enter: appellant name, address, city, state, ZIP, phone number, email address (and confirm it), and appellant type.",
+              "Hearing question: a hearing is optional and held by phone. Choosing No is fine: you won't be penalized, and the Board's analysts use the same analysis either way. Choose Yes only if there are circumstances you can't explain in writing (then see the evidence step).",
+              "Purchase year: if you bought your home in one of the years in the dropdown, pick that year; otherwise pick Other.",
+            ] },
+          list.length > 0 && supportsAppeal
+            ? { id: "comps", title: `Notes page: list your ${list.length} comparable ${list.length === 1 ? "property" : "properties"}`, body: [
+                "Because you are appealing on the grounds of uniformity, list these comparable properties on the Notes page, and paste the explanation below into the notes text box.",
+              ], copy: list.map((c, i) => ({ label: `Comp ${i + 1}: ${c.address ?? "address unavailable"}`, value: formatPin(c.pin) })) }
+            : compsStep,
+          { id: "confirm", title: `Confirm, initial and submit by ${niceDate(deadline)}`, body: [
+              "Click Next, check the box confirming the details of your appeal, initial the appeal, and click Submit.",
+              "Keep the confirmation emails (Filing ID and docket number). The Board of Review mails its decision.",
+            ] },
+          { id: "evidence", title: "Only if you chose a hearing: submit your evidence", body: [
+              "The Board asks for supporting documents by the deadline after your township closes" + (evidenceDeadline ? `: ${niceDate(evidenceDeadline)}.` : "."),
+              "Typical evidence: a current photo of your property's exterior, the PINs of your comparable properties, and a signed statement explaining why you think the property is over-assessed.",
             ], link: { href: LINKS.borHearings, label: "About Board of Review hearings" } },
-          { id: "after", title: "Wait for the result", body: ["The Board of Review mails its decision."] },
         ];
 
   return {
